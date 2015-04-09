@@ -1,0 +1,50 @@
+#!/bin/bash
+
+: ${LOGFILE:=/tmp/create_kdc.log}
+: ${DEBUG:=1}
+: ${REALM:=NODE.CONSUL}
+: ${KERB_MASTER_KEY:=masterkey}
+: ${KERB_ADMIN_USER:=admin}
+: ${KERB_ADMIN_PASS:=admin}
+
+create_db() {
+  /usr/sbin/kdb5_util -P $KERB_MASTER_KEY -r $REALM create -s
+}
+
+start_kdc() {
+  /etc/rc.d/init.d/krb5kdc start
+  /etc/rc.d/init.d/kadmin start
+
+  chkconfig krb5kdc on
+  chkconfig kadmin on
+}
+
+restart_kdc() {
+  /etc/rc.d/init.d/krb5kdc restart
+  /etc/rc.d/init.d/kadmin restart
+}
+
+create_admin_user() {
+  kadmin.local -q "addprinc -pw $KERB_ADMIN_PASS $KERB_ADMIN_USER/admin"
+  echo "*/admin@$REALM *" > /var/kerberos/krb5kdc/kadm5.acl
+}
+
+main() {
+  export KERB_ADMIN_USER=$(echo $PAYLOAD | cut -d" " -f 1);
+  export KERB_ADMIN_PASS=$(echo $PAYLOAD | cut -d" " -f 2);
+  export KERB_MASTER_KEY=$(echo $PAYLOAD | cut -d" " -f 3);
+  export REALM=$(echo $PAYLOAD | cut -d" " -f 4);
+
+  debug "Create KDC admin principal: $KERB_ADMIN_USER"
+
+  create_db
+  start_kdc
+  create_admin_user
+  restart_kdc
+}
+
+debug(){
+  [[ "$DEBUG" ]] && echo "[DEBUG] $*" >> $LOGFILE
+}
+
+[[ "$0" == "$BASH_SOURCE" ]] && main "$@"
